@@ -3,13 +3,65 @@ import bcrypt
 import psycopg2
 import os
 
-# DEMO_MODE: run as a UI-only demo with no database. A stub connection
-# returns no rows, so every page still renders from its real templates.
-if os.getenv("DEMO_MODE"):
+# DEMO_MODE: UI-only demo with no database and no login. A stub connection
+# answers each query with fictional sample rows; writes are accepted but not stored.
+DEMO = bool(os.getenv("DEMO_MODE"))
+if DEMO:
+    _EST = [
+        (1, "Lola Nena's Kitchen", "Los Banos, Laguna", 4.6),
+        (2, "Kape Tagpuan", "Calamba, Laguna", 4.4),
+        (3, "Inihaw sa Bayan", "Santa Rosa, Laguna", 4.5),
+        (4, "Halo-Halo Haven", "Bay, Laguna", 4.8),
+    ]
+    # food_id, foodname, price, food_type, average_rating, establishment_id
+    _FOOD = [
+        (1, "Tapsilog", 120, "Meal", 4.7, 1), (2, "Pancit Canton", 95, "Meal", 4.3, 1),
+        (3, "Iced Spanish Latte", 110, "Drink", 4.5, 2), (4, "Ube Cheese Pandesal", 55, "Snack", 4.4, 2),
+        (5, "Chicken Inasal", 145, "Meal", 4.6, 3), (6, "Pork Barbecue", 35, "Snack", 4.2, 3),
+        (7, "Halo-Halo Special", 90, "Dessert", 4.8, 4), (8, "Mais con Yelo", 70, "Dessert", 4.5, 4),
+    ]
+    _USERS = [
+        (1, "demo_admin", "admin@demo.local", "admin", "Demo", "", "Admin"),
+        (2, "lola_nena", "owner@demo.local", "owner", "Nena", "", "Reyes"),
+        (3, "juan_eats", "juan@demo.local", "customer", "Juan", "M", "Cruz"),
+        (4, "maria_foodie", "maria@demo.local", "customer", "Maria", "", "Santos"),
+    ]
+    _EST_NAME = {e[0]: e[1] for e in _EST}
+
     class _DemoCursor:
-        def execute(self, *args, **kwargs): pass
-        def fetchall(self): return []
-        def fetchone(self): return None
+        def execute(self, sql, params=()):
+            self.q, self.p = " ".join(sql.lower().split()), tuple(params or ())
+
+        def fetchall(self):
+            q = self.q
+            if "from account" in q:
+                return _USERS
+            if "food.food_id" in q:
+                return [f[:5] + (_EST_NAME[f[5]],) for f in _FOOD]
+            if "from food where establishment_id" in q:
+                return [f[:5] for f in _FOOD if f[5] == self.p[0]]
+            if "address_location" in q:
+                return _EST
+            if "establishment_id, establishment_name from" in q:
+                return [e[:2] for e in _EST]
+            return []
+
+        def fetchone(self):
+            q = self.q
+            if q.startswith("select *"):
+                return None  # "already exists" checks: let adds/sign-ups go through
+            if "select user_type" in q:
+                return ("admin",)
+            if "select user_id from account" in q:
+                return (1,)
+            if "from account where user_id" in q:
+                return next((u for u in _USERS if u[0] == self.p[0]), _USERS[0])
+            if "from establishment where establishment_id" in q:
+                return next((e for e in _EST if e[0] == self.p[0]), _EST[0])
+            if "from food where food_id" in q:
+                return next((f for f in _FOOD if f[0] == self.p[0]), _FOOD[0])
+            return None
+
         def close(self): pass
 
     class _DemoConnection:
@@ -21,6 +73,14 @@ if os.getenv("DEMO_MODE"):
 import urllib
 
 app = Flask(__name__)
+
+if DEMO:
+    # no login in the demo: everyone browses as the demo admin
+    @app.before_request
+    def _demo_session():
+        session.setdefault("user_id", 1)
+        if request.method == "GET" and request.endpoint in ("index", "login", "signup", "logout"):
+            return redirect(url_for("see_est"))
 
 # Set a secret key for the session
 app.secret_key = b'_5#y2L"F4Q8z\n\xec]/'
