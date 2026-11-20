@@ -703,7 +703,7 @@ def edit_fd(food_id):
         foodname = request.form['foodname']
         price = request.form['price']
         food_type = request.form['food_type']
-        est_id = request.form['est']
+        est_id = request.form.get('est_id') or request.form.get('est')  # the form field is est_id
         # Create connection to database
         connection = psycopg2.connect(supabase_connection_string)
         cursor = connection.cursor()
