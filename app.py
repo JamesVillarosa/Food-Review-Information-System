@@ -1,6 +1,23 @@
 from flask import *
 import bcrypt
 import psycopg2
+import os
+
+# DEMO_MODE: run as a UI-only demo with no database. A stub connection
+# returns no rows, so every page still renders from its real templates.
+if os.getenv("DEMO_MODE"):
+    class _DemoCursor:
+        def execute(self, *args, **kwargs): pass
+        def fetchall(self): return []
+        def fetchone(self): return None
+        def close(self): pass
+
+    class _DemoConnection:
+        def cursor(self): return _DemoCursor()
+        def commit(self): pass
+        def close(self): pass
+
+    psycopg2.connect = lambda *args, **kwargs: _DemoConnection()
 import urllib
 
 app = Flask(__name__)
